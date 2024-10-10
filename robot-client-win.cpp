@@ -2,9 +2,11 @@
 #include <string>
 #include <cstring>
 #include <winsock2.h>
-#include <ws2tcpip.h>
+#include <ws2tcp_ip.h>
+#include <SDL.h>
 
 #pragma comment(lib, "ws2_32.lib") // Link with the Winsock library
+#pragma comment(lib, "SDL2.lib")   // Link with the SDL2 library
 
 #define PORT 33033
 #define BUFFER_SIZE 1024
@@ -32,7 +34,7 @@ int main() {
         return -1;
     }
 
-    char robot_ip;
+    char robot_ip[16];
 
     server_address.sin_family = AF_INET;
     server_address.sin_port = htons(PORT);
@@ -54,19 +56,47 @@ int main() {
 
     std::cout << "Connected to the server" << std::endl;
 
-    char input;
-    while (true) {
-        std::cout << "Enter command (WASD): ";
-        std::cin >> input;
-
-        if (input == 'w' || input == 'a' || input == 's' || input == 'd') {
-            send(sock, &input, 1, 0);
-        } else {
-            std::cout << "Invalid command" << std::endl;
-        }
+    // Initialize SDL
+    if (SDL_Init(SDL_INIT_JOYSTICK) < 0) {
+        std::cerr << "SDL could_not_initialize! SDL_Error: " << SDL_GetError() << std::endl;
+        return -1;
     }
 
-    // Clean up
+    // Open the joystick
+    if (SDL_NumJoysticks() < 1) {
+        std::cerr << "No joysticks detected" << std::endl;
+        return -1;
+    }
+
+    SDL_Joystick *joystick = SDL_JoystickOpen(0);
+    if (!joystick) {
+        std::cerr << "Failed to open joystick: " << SDL_GetError() << std::endl;
+        return -1;
+    }
+
+    while (true) {
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT) {
+                goto cleanup;
+            }
+        }
+
+        // Get the current state of the joystick axes
+        int axis0 = SDL_JoystickGetAxis(joystick, 0);
+        int axis1 = SDL_JoystickGetAxis(joystick, 1);
+
+        // Send the current state of the axes to the server
+        char message[16];
+        snprintf(message, sizeof(message), "%d,%d", axis0, axis1);
+        send(sock, message, strlen(message), 0);
+
+        SDL_Delay(100); // Small delay to avoid spamming the server
+    }
+
+cleanup:
+    SDL_JoystickClose(joystick);
+    SDL_Quit();
     closesocket(sock);
     WSACleanup();
 

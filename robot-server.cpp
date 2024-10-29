@@ -19,7 +19,7 @@
 #define GPIO_RIGHT 23
 
 // UART settings
-#define UART_DEVICE "/dev/ttyUSB0"
+#define UART_DEVICE "/dev/ttyS0"
 #define UART_BAUD_RATE B9600
 
 void setup_gpio(int gpio) {

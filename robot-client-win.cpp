@@ -1,104 +1,66 @@
-#include <iostream>
-#include <string>
-#include <cstring>
 #include <winsock2.h>
-#include <ws2tcp_ip.h>
-#include <SDL.h>
+#include <ws2tcpip.h>
+#include <iostream>
+#include <conio.h>  // Для работы с функцией _kbhit() и _getch()
 
-#pragma comment(lib, "ws2_32.lib") // Link with the Winsock library
-#pragma comment(lib, "SDL2.lib")   // Link with the SDL2 library
 
-#define PORT 33033
-#define BUFFER_SIZE 1024
+#pragma comment(lib, "ws2_32.lib")  // Подключение библиотеки Winsock
+
+
+// #define SERVER_IP "192.168.1.46"  // IP адрес Raspberry  указываем вручную в переменной server_ip
+#define SERVER_PORT 33033  // Порт для передачи данных
+
 
 int main() {
+    char server_ip[16];
+    std::cin>>server_ip;
+    // Инициализация Winsock
     WSADATA wsaData;
-    int result;
-
-    // Initialize Winsock
-    result = WSAStartup(MAKEWORD(2, 2), &wsaData);
-    if (result != 0) {
-        std::cerr << "WSAStartup failed: " << result << std::endl;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        std::cerr << "Ошибка инициализации Winsock" << std::endl;
         return -1;
     }
 
-    int sock;
-    struct sockaddr_in server_address;
-    char buffer[BUFFER_SIZE] = {0};
-
-    // Create a socket
-    sock = socket(AF_INET, SOCK_STREAM, 0);
+    // Создание сокета
+    SOCKET sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (sock == INVALID_SOCKET) {
-        std::cerr << "socket failed: " << WSAGetLastError() << std::endl;
+        std::cerr << "Ошибка создания сокета" << std::endl;
         WSACleanup();
         return -1;
     }
 
-    char robot_ip[16];
+    // Настройка адреса сервера
+    sockaddr_in serverAddr;
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = htons(SERVER_PORT);
+    serverAddr.sin_addr.s_addr = inet_addr(server_ip);
 
-    server_address.sin_family = AF_INET;
-    server_address.sin_port = htons(PORT);
-
-    std::cout << "Enter IP: ";
-    std::cin >> robot_ip;
-
-    // Convert IPv4 and IPv6 addresses from text to binary form
-    inet_pton(AF_INET, robot_ip, &server_address.sin_addr);
-
-    // Connect to the server
-    result = connect(sock, (struct sockaddr *)&server_address, sizeof(server_address));
-    if (result == SOCKET_ERROR) {
-        std::cerr << "connect failed: " << WSAGetLastError() << std::endl;
-        closesocket(sock);
-        WSACleanup();
-        return -1;
-    }
-
-    std::cout << "Connected to the server" << std::endl;
-
-    // Initialize SDL
-    if (SDL_Init(SDL_INIT_JOYSTICK) < 0) {
-        std::cerr << "SDL could_not_initialize! SDL_Error: " << SDL_GetError() << std::endl;
-        return -1;
-    }
-
-    // Open the joystick
-    if (SDL_NumJoysticks() < 1) {
-        std::cerr << "No joysticks detected" << std::endl;
-        return -1;
-    }
-
-    SDL_Joystick *joystick = SDL_JoystickOpen(0);
-    if (!joystick) {
-        std::cerr << "Failed to open joystick: " << SDL_GetError() << std::endl;
-        return -1;
-    }
-
+    // Основной цикл обработки клавиш
     while (true) {
-        SDL_Event event;
-        while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_QUIT) {
-                goto cleanup;
+        if (_kbhit()) {  // Проверяем, была ли нажата клавиша
+            char key = _getch();  // Считываем клавишу
+
+            char command = 0;  // Команда, которая будет отправлена
+            switch (key) {
+                case 'w': command = '1'; break;
+                case 's': command = '2'; break;
+                case 'd': command = '3'; break;
+                case 'a': command = '4'; break;
+                case 72: command = '5'; break;  // Вверх
+                case 80: command = '6'; break;  // Вниз
+                case 75: command = '7'; break;  // Влево
+                case 77: command = '8'; break;  // Вправо
+            }
+
+            if (command != 0) {
+                // Отправляем команду на сервер
+                sendto(sock, &command, sizeof(command), 0, (sockaddr*)&serverAddr, sizeof(serverAddr));
             }
         }
-
-        // Get the current state of the joystick axes
-        int axis0 = SDL_JoystickGetAxis(joystick, 0);
-        int axis1 = SDL_JoystickGetAxis(joystick, 1);
-
-        // Send the current state of the axes to the server
-        char message[16];
-        snprintf(message, sizeof(message), "%d,%d", axis0, axis1);
-        send(sock, message, strlen(message), 0);
-
-        SDL_Delay(100); // Small delay to avoid spamming the server
     }
 
-cleanup:
-    SDL_JoystickClose(joystick);
-    SDL_Quit();
+    // Закрываем сокет и освобождаем ресурсы
     closesocket(sock);
     WSACleanup();
-
     return 0;
 }
